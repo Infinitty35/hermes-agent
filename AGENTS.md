@@ -1354,3 +1354,47 @@ not the specific names.
 
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
+
+---
+
+## Cursor Cloud specific instructions
+
+Durable, non-obvious notes for agents working in the Cursor Cloud VM. The
+startup update script (`command -v uv || install uv` then
+`uv sync --extra all --extra dev`) already provisions Python deps into a repo
+venv before each session, so nothing below is a setup step — it's context.
+
+- **Python venv is `.venv/` at the repo root** (created by `uv sync`, Python
+  3.12). Run tools via `.venv/bin/<tool>` or `source .venv/bin/activate`.
+  `scripts/run_tests.sh` auto-probes `.venv` first, so tests work with no extra
+  steps.
+- **The dev baseline is the `all,dev` extras, not every extra.** Optional
+  backends (`messaging`/telegram/discord, `modal`, `daytona`, `bedrock`/boto3,
+  `matrix`, `voice`, …) are intentionally NOT installed and are lazy-installed
+  at first use via `tools/lazy_deps.py`. Do not "fix" their absence by widening
+  the update script — install the specific extra only if a task needs it
+  (`uv sync --extra <name>` or `uv pip install -e ".[<name>]"`).
+- **`uv` lives at `$HOME/.local/bin/uv`** and may not be on `PATH` in a bare
+  shell; call it by full path or prefix `PATH="$HOME/.local/bin:$PATH"`.
+- **No LLM provider key ships in the VM.** A real agent turn (`hermes chat`,
+  gateway, TUI) needs an OpenAI-compatible provider + key in
+  `~/.hermes/config.yaml` + `~/.hermes/.env` (or a secret injected as an env
+  var). To exercise the full agent loop offline, define a custom provider under
+  `providers:` in a scratch `HERMES_HOME` config pointing `base_url` at a local
+  OpenAI-compatible mock and run `hermes chat --provider <name> -m <model>
+  --yolo -q "..."` (`--yolo` auto-approves tool calls in non-interactive `-q`
+  mode). This is how the environment's end-to-end hello-world was validated.
+- **Known environment-limited test failures:** `tests/hermes_cli/
+  test_gateway_service.py` and the native-linux case in
+  `tests/hermes_cli/test_gateway_wsl.py` fail here because the container has no
+  functional systemd/user D-Bus session (`supports_systemd_services()` returns
+  False, `loginctl enable-linger` errors). These are infra limitations, not
+  code regressions — ignore unless your change touches gateway service
+  management.
+- **Lint** is `.venv/bin/ruff check .` (only the `PLW1514` rule is enabled; see
+  `[tool.ruff]` in `pyproject.toml`). Typecheck is `.venv/bin/ty` (config in
+  `[tool.ty]`).
+- **Optional JS surfaces** (TUI `ui-tui/`, dashboard `web/`, desktop
+  `apps/desktop/`) are npm workspaces rooted at `/workspace`; they need a root
+  `npm install` first (Node ≥20, already present) and are NOT provisioned by the
+  update script. The `hermes` CLI does not require them.
